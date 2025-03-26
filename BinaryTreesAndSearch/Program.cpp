@@ -7,37 +7,30 @@ using namespace std;
 
 class BinaryNodeValue
 {
-	public: virtual int GetCompareNumber() = 0;
-
-	public: virtual void OnRepeatAdd() = 0;
+	public: virtual void OnInserionRepeat() = 0;
 
 	public: virtual string ToString() = 0;
 };
 
-class CharInfo : BinaryNodeValue
+class CharInfoNodeValue : BinaryNodeValue
 {
 	public: int Char;
 
 	public: int Count;
 
-	public: CharInfo()
+	public: CharInfoNodeValue()
 	{
 		Char = 0;
 		Count = 0;
 	}
 
-	public: CharInfo(int c, int count = 1)
+	public: CharInfoNodeValue(int c, int count = 1)
 	{
 		Char = c;
 		Count = count;
 	}
 
-	public: int GetCompareNumber()
-	{
-		return Char;
-	}
-
-	public: void OnRepeatAdd()
+	public: void OnInserionRepeat()
 	{
 		Count++;
 	}
@@ -56,14 +49,19 @@ template
 class BinaryNode
 {
 	public: BinaryNode* LeftNode;
+
 	public: BinaryNode* RightNode;
+
 	public: TValue Value;
 
-	public: BinaryNode(TValue value)
+	private: int (*_compare)(TValue, TValue);
+
+	public: BinaryNode(TValue value, int (*compare)(TValue, TValue))
 	{
 		Value = value;
 		LeftNode = NULL;
 		RightNode = NULL;
+		_compare = compare;
 	}
 
 	public: ~BinaryNode()
@@ -76,22 +74,21 @@ class BinaryNode
 
 	public: void Add(TValue value)
 	{
-		int nodeValueNumber = Value.GetCompareNumber();
-		int argsValueNumber = value.GetCompareNumber();
+		int compareResult = _compare(Value, value);
 
-		if (nodeValueNumber == argsValueNumber)
+		if (compareResult == 0)
 		{
-			Value.OnRepeatAdd();
+			Value.OnInserionRepeat();
 			return;
 		}
 
-		if (argsValueNumber < nodeValueNumber)
+		if (compareResult < 0)
 		{
 			if (LeftNode != NULL)
 				LeftNode->Add(value);
 			else
 			{
-				BinaryNode* newTree = new BinaryNode(value);
+				BinaryNode* newTree = new BinaryNode(value, _compare);
 				LeftNode = newTree;
 			}
 		}
@@ -101,7 +98,7 @@ class BinaryNode
 				RightNode->Add(value);
 			else
 			{
-				BinaryNode* newTree = new BinaryNode(value);
+				BinaryNode* newTree = new BinaryNode(value, _compare);
 				RightNode = newTree;
 			}
 		}
@@ -109,17 +106,16 @@ class BinaryNode
 
 	public: BinaryNode<TValue>* Find(TValue value, int* steps)
 	{
-		int nodeValueNumber = Value.GetCompareNumber();
-		int argsValueNumber = value.GetCompareNumber();
+		int compareResult = _compare(Value, value);
 
 		++*steps;
-		if (nodeValueNumber == argsValueNumber)
+		if (compareResult == 0)
 			return this;
 
-		if (argsValueNumber < nodeValueNumber && LeftNode != NULL)
+		if (compareResult < 0 && LeftNode != NULL)
 			return LeftNode->Find(value, steps);
 
-		if (argsValueNumber > nodeValueNumber && RightNode != NULL)
+		if (compareResult >  0 && RightNode != NULL)
 			return RightNode->Find(value, steps);
 
 		return NULL;
@@ -161,11 +157,6 @@ class BinaryNode
 	}
 };
 
-bool Compare(CharInfo& charInfo1, CharInfo& charInfo2)
-{
-	return charInfo1.Char > charInfo2.Char;
-}
-
 
 int GetCharCountConsistently(string text, char c, int* stepsCount) 
 {
@@ -181,11 +172,11 @@ int GetCharCountConsistently(string text, char c, int* stepsCount)
 
 int GetCharCountBinary(string text, char c, int* stepsCount)
 {
-	vector<CharInfo> array = vector<CharInfo>();
+	vector<CharInfoNodeValue> array = vector<CharInfoNodeValue>();
 	for (int i = 0; i < text.length(); i++)
 	{
 		bool arrayHasCharInfo = false;
-		CharInfo newCharInfo = CharInfo(text[i]);
+		CharInfoNodeValue newCharInfo = CharInfoNodeValue(text[i]);
 		for (int j = 0; j < array.size(); j++)
 			if (array[j].Char == newCharInfo.Char)
 			{
@@ -197,37 +188,49 @@ int GetCharCountBinary(string text, char c, int* stepsCount)
 			array.push_back(newCharInfo);
 	}
 
-	sort(array.begin(), array.end(), [](CharInfo& charInfo1, CharInfo& charInfo2) {return charInfo1.Char > charInfo2.Char; });
+	sort(array.begin(), array.end(), [](CharInfoNodeValue& charInfo1, CharInfoNodeValue& charInfo2) {return charInfo1.Char < charInfo2.Char; });
 
 	int size = array.size();
 	int first = 0;
 	int last = size - 1;
 
-
-	for (int i = size / 2; i < size;)
+	while (last >= first)
 	{
 		++*stepsCount;
-		if (array[i].Char == c)
+		int current = first + (last - first) / 2;
+
+		if (array[current].Char == c)
 		{
-			return array[i].Count;
+			return array[current].Count;
 		}
-		else if (array[i].Char > c)
+		else if (array[current].Char > c)
 		{
-			i += (size - i) / 2 ;
+			last = current - 1;
 		}
 		else
 		{
-			i -= (size - i) / 2;
+			first = current + 1;
 		}
+
 	}
 	return -1;
+}
+
+int Compare(CharInfoNodeValue charInfo1, CharInfoNodeValue charInfo2)
+{
+	if (charInfo1.Char == charInfo2.Char)
+		return 0;
+	else if (charInfo1.Char < charInfo2.Char)
+		return 1;
+	else
+		return -1;
 }
 
 int main()
 {
 	string text = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam";
 	int length = text.length();
-	CharInfo preLastLetterInfo = CharInfo(text[text.length() - 2]);
+	CharInfoNodeValue preLastLetterInfo = CharInfoNodeValue(text[text.length() - 2]);
 
 	int binaryTreeSteps = 0;
 	int consistentSearchSteps = 0;
@@ -238,26 +241,20 @@ int main()
 	int binarySearchCount = 0;
 
 	// Поиск в бинарном дереве
-	BinaryNode<CharInfo> mainNode = BinaryNode<CharInfo>(100);
+	BinaryNode<CharInfoNodeValue> mainNode = BinaryNode<CharInfoNodeValue>(CharInfoNodeValue(100), Compare);
 	for (int i = 0; i < length; i++)
 	{
-		CharInfo charInfo = CharInfo(text[i]);
+		CharInfoNodeValue charInfo = CharInfoNodeValue(text[i]);
 		mainNode.Add(charInfo);
 
 	}
-	BinaryNode<CharInfo>* founded = mainNode.Find(preLastLetterInfo, &binaryTreeSteps);
+	BinaryNode<CharInfoNodeValue>* founded = mainNode.Find(preLastLetterInfo, &binaryTreeSteps);
 	if (founded != NULL)
 		binaryTreeCount = founded->Value.Count;
 
 	// Последовательный поиск
 	consistentSearchCount = GetCharCountConsistently(text, preLastLetterInfo.Char, &consistentSearchSteps);
 
-
-	for (int i = 0; i < text.length(); i++) {
-		cout << text[i] << " " << i << endl;
-		cout << GetCharCountBinary(text, text[i], &binarySearchSteps) << endl;
-
-	}
 	// Бинарный поиск
 	binarySearchCount = GetCharCountBinary(text, preLastLetterInfo.Char, &binarySearchSteps);
 
