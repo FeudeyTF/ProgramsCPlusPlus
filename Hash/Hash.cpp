@@ -34,11 +34,16 @@ class Utils
 			result = "0" + result;
 		return result;
 	}
+
 };
 
-class SHA256
+const int _maxIterationsCount = 80;
+
+const int _maxBlockLength = 1024;
+
+class SHA2
 {
-	// Массив  из первых 32 цифр дробной части кубических корней из простых чисел (2-19)
+	// Массив  из первых 32 цифр дробной части кубических корней из простых чисел (2-311)
 	private: static constexpr uint _partsOfCubicRoots[64] = 
 	{
 	   0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
@@ -51,12 +56,174 @@ class SHA256
 	   0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
 	};
 
-	private: uint _hashValues[8];
+	protected: uint _hashValues[8];
 
-	private: int _blockLength = 512;
+	protected: int _blockLength = 512;
 
-	private: int _iterationNumber = 64;
+	protected: int _iterationsCount = 64;
 
+	protected: int _wordLength = 32;
+
+	protected: virtual void Reset()
+	{
+	}
+
+	public: virtual const int GetDigestLength()
+	{
+		return 256;
+	}
+
+	private: void ProcessBlock(byte* block)
+	{
+		int wordsCount = _blockLength / _wordLength;
+		uint words[_maxIterationsCount]{};
+
+		for (int i = 0; i < wordsCount; i++)
+		{
+			words[i] = (uint)block[i * 4] << 24 | (uint)block[i * 4 + 1] << 16 | (uint)block[i * 4 + 2] << 8 | (uint)block[i * 4 + 3];
+		}
+
+		for (int i = wordsCount; i < _iterationsCount; i++)
+		{
+			words[i] = words[i - wordsCount] + SmallSigma0(words[i - wordsCount + 1]) + words[i - 7] + SmallSigma1(words[i - 2]);
+		}
+
+		// значения A, B, C, D, E, F, G, H
+		uint tempValues[8]{};
+		for (int i = 0; i < 8; i++)
+			tempValues[i] = _hashValues[i];
+
+		for (int i = 0; i < _iterationsCount; i++)
+		{
+			int temp2 = BigSigma0(tempValues[0]) + Majority(tempValues[0], tempValues[1], tempValues[2]);
+			int temp1 = tempValues[7] + BigSigma1(tempValues[4]) + Choose(tempValues[4], tempValues[5], tempValues[6]) + _partsOfCubicRoots[i] + words[i];
+
+			for (int j = 7; j > 0; j--)
+			{
+				tempValues[j] = tempValues[j - 1];
+				if (j == 4)
+					tempValues[j] += temp1;
+			}
+			tempValues[0] = temp1 + temp2;
+		}
+
+		for (int i = 0; i < 8; i++)
+			_hashValues[i] += tempValues[i];
+	}
+
+	private: void FragmentMessageOnBlocks(byte* message, size_t size, byte** buffer)
+	{
+		size_t bitLength = size * 8;
+		size_t blocksForMessageCount = bitLength / _blockLength + 1;
+		int bytesInBlockCount = _blockLength / 8;
+		size_t blocksCount = (bitLength + 64) / _blockLength + 1;
+		size_t remainingSize = size;
+
+		for (int i = 0; i < blocksForMessageCount; i++)
+		{
+			byte* block = buffer[i];
+			int end = remainingSize > bytesInBlockCount ? bytesInBlockCount : remainingSize;
+			for (int j = 0; j < end; j++)
+				block[j] = message[i * bytesInBlockCount + j];
+			if (remainingSize < bytesInBlockCount)
+				remainingSize = 0;
+			else
+				remainingSize -= bytesInBlockCount;
+		}
+
+		buffer[blocksForMessageCount - 1][size % bytesInBlockCount] = 0x80;
+
+		for (int j = 0; j < 8; j++)
+			buffer[blocksCount - 1][63 - j] = bitLength >> 8 * j;
+	}
+
+	public: uint* Hash(byte* message, size_t size)
+	{
+		if (_iterationsCount > _maxIterationsCount)
+		{
+			cerr << "Invalid iteration number! Max value is: " << _maxIterationsCount << endl;
+			return NULL;
+		}
+		if (_blockLength > _maxBlockLength)
+		{
+			cerr << "Invalid block length! Max value is: " << _maxBlockLength << endl;
+			return NULL;
+		}
+
+		size_t blocksCount = (size * 8 + 64) / _blockLength + 1;
+
+		byte** blocks = (byte**)calloc(blocksCount, sizeof(byte*));
+		for (int i = 0; i < blocksCount; i++)
+			blocks[i] = (byte*)calloc(_blockLength / sizeof(byte), sizeof(byte));
+
+		FragmentMessageOnBlocks(message, size, blocks);
+
+		for (int i = 0; i < blocksCount; i++)
+			ProcessBlock(blocks[i]);
+
+		for (int i = 0; i < blocksCount; i++)
+			free(blocks[i]);
+		free(blocks);
+		return _hashValues;
+	}
+
+	// Логический сдвиг вправо
+	protected: uint ShiftRight(uint value, int bits)
+	{
+		return value >> bits;
+	}
+
+	// Циклический сдвиг вправо
+	protected: uint RotateRight(uint value, int bits)
+	{
+		return (value >> bits) | (value << (32 - bits));
+	}
+
+	protected: uint Choose(uint x, uint y, uint z)
+	{
+		return (x & y) ^ (~x & z);
+	}
+
+	protected: uint Majority(uint x, uint y, uint z)
+	{
+		return (x & (y | z)) | (y & z);
+	}
+
+	protected: virtual uint BigSigma0(uint x)
+	{
+		return RotateRight(x, 2) ^ RotateRight(x, 13) ^ RotateRight(x, 22);
+	}
+
+	protected: virtual uint BigSigma1(uint x)
+	{
+		return RotateRight(x, 6) ^ RotateRight(x, 11) ^ RotateRight(x, 25);
+	}
+
+	protected: virtual uint SmallSigma0(uint x)
+	{
+		return RotateRight(x, 7) ^ RotateRight(x, 18) ^ ShiftRight(x, 3);
+	}
+
+	protected: virtual uint SmallSigma1(uint x)
+	{
+		return RotateRight(x, 17) ^ RotateRight(x, 19) ^ ShiftRight(x, 10);
+	}
+
+	private: void PrintBlock(byte* block, int num)
+	{
+		cout << "Block " << num + 1 << endl;
+
+		for (int j = 0; j < 61; j += 4)
+		{
+			cout << Utils::ToBinary(block[j], 8) << " " << Utils::ToBinary(block[j + 1], 8) << " " << Utils::ToBinary(block[j + 2], 8) << " " << Utils::ToBinary(block[j + 3], 8) << endl;
+		}
+		cout << endl;
+	}
+};
+
+
+class SHA256 : public SHA2
+{
 	public: SHA256()
 	{
 		Reset();
@@ -73,124 +240,82 @@ class SHA256
 		_hashValues[5] = 0x9B05688C;
 		_hashValues[6] = 0x1F83D9AB;
 		_hashValues[7] = 0x5BE0CD19;
-	}
 
-	public: uint* Hash(byte* message, size_t size)
+		_blockLength = 512;
+		_iterationsCount = 64;
+		_wordLength = 32;
+	}
+};
+
+class SHA224 : public SHA2
+{
+	public: int HashLength = 224;
+
+	public: SHA224()
 	{
+		HashLength = 224;
 		Reset();
-
-		int remainingSize = size;
-
-		byte block[64]{};
-
-		for (int i = 0; i < size; i++)
-			block[i] = message[i];
-		block[size] = 0x80;
-
-		
-		size_t bitLength = size * 8;
-		block[63] = bitLength;
-		block[62] = bitLength >> 8;
-		block[61] = bitLength >> 16;
-		block[60] = bitLength >> 24;
-		block[59] = bitLength >> 32;
-		block[58] = bitLength >> 40;
-		block[57] = bitLength >> 48;
-		block[56] = bitLength >> 56;
-
-		uint words[64]{};
-
-		for (int i = 0; i < 16; i++)
-		{
-			words[i] = (uint)block[i * 4] << 24 | (uint)block[i * 4 + 1] << 16 | (uint)block[i * 4 + 2] << 8 | (uint)block[i * 4 + 3];
-		}
-
-		for (int i = 16; i < 64; i++)
-			words[i] = words[i - 16] + Sigma0(words[i - 15]) + words[i - 7] + Sigma1(words[i - 2]);
-
-
-		uint a = _hashValues[0];
-		uint b = _hashValues[1];
-		uint c = _hashValues[2];
-		uint d = _hashValues[3];
-		uint e = _hashValues[4];
-		uint f = _hashValues[5];
-		uint g = _hashValues[6];
-		uint h = _hashValues[7];
-
-
-		for (int i = 0; i < 64; i++)
-		{
-			int temp2 = RotateRight(a, 2) ^ RotateRight(a, 13) ^ RotateRight(a, 22);
-			temp2 += Majority(a, b, c);
-			int temp1 = h;
-			temp1 += RotateRight(e, 6) ^ RotateRight(e, 11) ^ RotateRight(e, 25);
-			temp1 += Choose(e, f, g) + _partsOfCubicRoots[i] + words[i];
-
-			h = g;
-			g = f;
-			f = e;
-			e = d + temp1;
-			d = c;
-			c = b;
-			b = a;
-			a = temp1 + temp2;
-		}
-
-		_hashValues[0] += a;
-		_hashValues[1] += b;
-		_hashValues[2] += c;
-		_hashValues[3] += d;
-		_hashValues[4] += e;
-		_hashValues[5] += f;
-		_hashValues[6] += g;
-		_hashValues[7] += h;
-
-		return _hashValues;
 	}
 
-	// Логический сдвиг вправо
-	private: uint ShiftRight(uint value, int bits)
+	public: const int GetDigestLength() override
 	{
-		return value >> bits;
+		return 224;
 	}
 
-	// Циклический сдвиг вправо
-	private: uint RotateRight(uint value, int bits)
+	public: void Reset()
 	{
-		return (value >> bits) | (value << (32 - bits));
-	}
+		// Наполняем массив первыми 32 цифрами дробной части квадратных корней из простых чисел (2-19)
+		_hashValues[0] = 0xC1059ED8;
+		_hashValues[1] = 0x367CD507;
+		_hashValues[2] = 0x3070DD17;
+		_hashValues[3] = 0xF70E5939;
+		_hashValues[4] = 0xFFC00B31;
+		_hashValues[5] = 0x68581511;
+		_hashValues[6] = 0x64F98FA7;
+		_hashValues[7] = 0xBEFA4FA4;
 
-	private: uint Choose(uint e, uint f, uint g)
-	{
-		return (e & f) ^ (~e & g);
+		_blockLength = 512;
+		_iterationsCount = 64;
+		_wordLength = 32;
 	}
+};
 
-	private: uint Majority(uint a, uint b, uint c)
-	{
-		return (a & (b | c)) | (b & c);
-	}
-
-	private: uint Sigma0(uint number)
-	{
-		return RotateRight(number, 7) ^ RotateRight(number, 18) ^ ShiftRight(number, 3);
-	}
-
-	private: uint Sigma1(uint number)
-	{
-		return RotateRight(number, 17) ^ RotateRight(number, 19) ^ ShiftRight(number, 10);
-	}
+enum HashType
+{
+	Sha256,
+	Sha224
 };
 
 class HashUtils
 {
-	private: static SHA256 _hasher;
-
-	public: static string Hash(string text)
+	public: static string Hash(string text, SHA2* hasher)
 	{
-		return "";// _hasher.Hash(text);
+		string result = "";
+		int size = text.size();
+		byte* data = (byte*)calloc(size, sizeof(byte));
+		for (int i = 0; i < size; i++)
+			data[i] = text[i];
+
+		uint* hash = hasher->Hash(data, size);
+		for (int i = 0; i < hasher->GetDigestLength() / 32; i++)
+			result += Utils::ToHex(hash[i], 8);
+
+		free(data);
+		return result;
+	}
+
+	public: static SHA2* GetHasherByType(HashType type)
+	{
+		switch (type)
+		{
+			case HashType::Sha224:
+				return new SHA224();
+			default:
+				return new SHA256();
+		}
 	}
 };
+
 
 class User
 {
@@ -198,41 +323,38 @@ class User
 
 	private: string _hashedPassword;
 
-	public: User(string name, string password)
+	private: SHA2* _hasher;
+
+	public: User(string name, string hashedPassword, HashType hashType)
 	{
 		Name = name; 
-		_hashedPassword = HashUtils::Hash(password);
+		_hashedPassword = hashedPassword;
+		cout << "Hashed Password: " << _hashedPassword << endl;
+		_hasher = HashUtils::GetHasherByType(hashType);
+	}
+
+	public: ~User()
+	{
+		delete _hasher;
 	}
 
 	public: bool Verify(string password)
 	{
-		return HashUtils::Hash(password) == _hashedPassword;
+		return HashUtils::Hash(password, _hasher) == _hashedPassword;
+	}
+
+	public: static User Create(string name, string password, HashType hashType)
+	{
+		auto hasher = HashUtils::GetHasherByType(hashType);
+		return User(name, HashUtils::Hash(password, hasher), hashType);
 	}
 };
 
+
 int main()
 {
-	SHA256 s = SHA256();
-	string message = "Yaner2004";
-	int size = message.size();
-	byte* data = (byte*)calloc(size, sizeof(byte));
-	for (int i = 0; i < size; i++)
-		data[i] = message[i];
-	uint* hash = s.Hash(data, size);
-
-	cout << "HASH:" << endl;
-	for (int i = 0; i < 8; i++)
-	{
-		cout << hash[i];
-	}
-	cout << endl;
-
-	cout << "Hex:" << endl;
-	for (int i = 0; i < 8; i++)
-	{
-		cout << Utils::ToHex(hash[i]);
-	}
-	cout << endl;
-
-	free(data);
+	User user = User::Create("Test", "test", HashType::Sha224);
+	string password;
+	cin >> password;
+	cout << user.Verify(password);
 }
