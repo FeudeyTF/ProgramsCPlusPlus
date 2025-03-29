@@ -1,5 +1,8 @@
 ﻿#include <iostream>
 #include <string>
+#include <vector>
+#include <algorithm>
+#include <fstream> 
 
 typedef unsigned int uint;
 typedef uint8_t byte;
@@ -10,6 +13,18 @@ string _alphabet = "0123456789ABCDEF";
 
 class Utils 
 {
+	public: static void Split(string str, char separator, vector<string>& v)
+	{
+		size_t start;
+		size_t end = 0;
+
+		while ((start = str.find_first_not_of(separator, end)) != string::npos)
+		{
+			end = str.find(separator, start);
+			v.push_back(str.substr(start, end - start));
+		}
+	}
+
 	public: static string ToBinary(uint decimal, size_t minLength = 0)
 	{
 		return ToBase(decimal, 2, minLength);
@@ -286,6 +301,10 @@ enum HashType
 	Sha224
 };
 
+SHA224 Sha224Hasher = SHA224();
+
+SHA256 Sha256Hasher = SHA256();
+
 class HashUtils
 {
 	public: static string Hash(string text, SHA2* hasher)
@@ -309,17 +328,23 @@ class HashUtils
 		switch (type)
 		{
 			case HashType::Sha224:
-				return new SHA224();
+				return &Sha224Hasher;
 			default:
-				return new SHA256();
+				return &Sha256Hasher;
 		}
 	}
-};
 
+	public: static HashType ParseHashType(string str)
+	{
+		return (HashType)atoi(str.c_str());
+	}
+};
 
 class User
 {
 	public: string Name;
+
+	public: HashType Type;
 
 	private: string _hashedPassword;
 
@@ -328,14 +353,9 @@ class User
 	public: User(string name, string hashedPassword, HashType hashType)
 	{
 		Name = name; 
+		Type = hashType;
 		_hashedPassword = hashedPassword;
-		cout << "Hashed Password: " << _hashedPassword << endl;
 		_hasher = HashUtils::GetHasherByType(hashType);
-	}
-
-	public: ~User()
-	{
-		delete _hasher;
 	}
 
 	public: bool Verify(string password)
@@ -343,18 +363,67 @@ class User
 		return HashUtils::Hash(password, _hasher) == _hashedPassword;
 	}
 
+	public: string ToString()
+	{
+		return Name + " " + _hashedPassword + " " + to_string(Type);
+	}
+
 	public: static User Create(string name, string password, HashType hashType)
 	{
 		auto hasher = HashUtils::GetHasherByType(hashType);
 		return User(name, HashUtils::Hash(password, hasher), hashType);
 	}
-};
 
+	public: static User Parse(string str)
+	{
+		string name = "";
+		string hashedPassword = "";
+		HashType hashType = HashType::Sha256;
+		vector<string> splitedString{};
+		Utils::Split(str, ' ', splitedString);
+		if (splitedString.size() == 3)
+		{
+			name = splitedString[0];
+			hashedPassword = splitedString[1];
+			hashType = HashUtils::ParseHashType(splitedString[2]);
+		}
+		return User(name, hashedPassword, hashType);
+	}
+};
 
 int main()
 {
-	User user = User::Create("Test", "test", HashType::Sha224);
-	string password;
-	cin >> password;
-	cout << user.Verify(password);
+	vector<User> users{};
+	string buffer;
+	ifstream out;
+	out.open("C:\\GItHub\\ProgramsCPlusPlus\\Hash\\x64\\Debug\\users.txt");
+	while (getline(out, buffer))
+		users.push_back(User::Parse(buffer));
+	out.close();
+
+	for (int i = 0; i < users.size(); i++)
+		cout << users[i].ToString() << endl;
+
+	string inputName = "";
+	string inputPassword = "";
+	cout << "Enter username:" << endl;
+	cin >> inputName;
+	cout << "Enter password:" << endl;
+	cin >> inputPassword;
+
+	for (int i = 0; i < users.size(); i++)
+	{
+		if (users[i].Name == inputName)
+		{
+			if (users[i].Verify(inputPassword))
+			{
+				cout << "You successfully entered as " << users[i].Name << "!" << endl;
+				return 0;
+			}
+			cout << "Invalid password!" << endl;
+			return 1;
+		}
+	}
+	cout << "User not found!" << endl;
+	return 2;
 }
