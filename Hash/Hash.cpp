@@ -525,6 +525,15 @@ vector<User> users{};
 User* user = nullptr;
 Form* runningForm = nullptr;
 
+void WriteUserToDataBase(User user)
+{
+	string buffer;
+	ofstream out;
+	out.open(fileName, ios::app);
+	out << user.ToString() << endl;
+	out.close();
+}
+
 void HandleLoginForm(Form form, vector<string> answers)
 {
 	for (int i = 0; i < users.size(); i++)
@@ -574,15 +583,6 @@ void HandleChooseForm(Form form, vector<string> answers)
 		runningForm = registerForm;
 	else
 		form.WriteLine("Invalid form!");
-}
-
-void WriteUserToDataBase(User user)
-{
-	string buffer;
-	ofstream out;
-	out.open(fileName, ios::app);
-	out << user.ToString() << endl;
-	out.close();
 }
 
 int main()
