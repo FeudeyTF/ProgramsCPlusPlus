@@ -3,6 +3,8 @@
 #include <vector>
 #include <algorithm>
 #include <fstream> 
+#include <windows.h>
+#include <conio.h>
 
 typedef unsigned int uint;
 typedef uint8_t byte;
@@ -11,7 +13,7 @@ using namespace std;
 
 string _alphabet = "0123456789ABCDEF";
 
-class Utils 
+class Utils
 {
 	public: static void Split(string str, char separator, vector<string>& v)
 	{
@@ -59,7 +61,7 @@ const int _maxBlockLength = 1024;
 class SHA2
 {
 	// Массив  из первых 32 цифр дробной части кубических корней из простых чисел (2-311)
-	private: static constexpr uint _partsOfCubicRoots[64] = 
+	private: static constexpr uint _partsOfCubicRoots[64] =
 	{
 	   0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
 	   0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
@@ -182,13 +184,13 @@ class SHA2
 		return _hashValues;
 	}
 
-	// Логический сдвиг вправо
+		  // Логический сдвиг вправо
 	protected: uint ShiftRight(uint value, int bits)
 	{
 		return value >> bits;
 	}
 
-	// Циклический сдвиг вправо
+			 // Циклический сдвиг вправо
 	protected: uint RotateRight(uint value, int bits)
 	{
 		return (value >> bits) | (value << (32 - bits));
@@ -235,7 +237,6 @@ class SHA2
 		cout << endl;
 	}
 };
-
 
 class SHA256 : public SHA2
 {
@@ -352,7 +353,7 @@ class User
 
 	public: User(string name, string hashedPassword, HashType hashType)
 	{
-		Name = name; 
+		Name = name;
 		Type = hashType;
 		_hashedPassword = hashedPassword;
 		_hasher = HashUtils::GetHasherByType(hashType);
@@ -366,12 +367,6 @@ class User
 	public: string ToString()
 	{
 		return Name + " " + _hashedPassword + " " + to_string(Type);
-	}
-
-	public: static User Create(string name, string password, HashType hashType)
-	{
-		auto hasher = HashUtils::GetHasherByType(hashType);
-		return User(name, HashUtils::Hash(password, hasher), hashType);
 	}
 
 	public: static User Parse(string str)
@@ -391,44 +386,241 @@ class User
 	}
 };
 
+void DrawTextField(HANDLE console, short x, short y, string text)
+{
+	SetConsoleCursorPosition(console, { x, y });
+	cout << text;
+}
+
+void DrawBox(HANDLE console, short x, short y, short width, short height, string title = "")
+{
+	if (title != "")
+		DrawTextField(console, x + width / 2 - title.size() / 2, y + 1, title);
+	for (short i = x; i < x + width; i++)
+	{
+		for (short j = y; j < y + height; j++)
+		{
+			char c = 0;
+			if (i == x && j == y)
+				c = 0xC9;
+			else if (i == x && j == y + height - 1)
+				c = 0xC8;
+			else if (i == x + width - 1 && j == y)
+				c = 0xBB;
+			else if (i == x + width - 1 && j == y + height - 1)
+				c = 0xBC;
+			else if (i == x || i == x + width - 1)
+				c = 0xBA;
+			else if (j == y || j == y + height - 1)
+				c = 0xCD;
+
+			if (c != 0)
+			{
+				SetConsoleCursorPosition(console, { i, j });
+				cout << c;
+			}
+		}
+	}
+}
+
+void ClearBox(HANDLE console, int x, int y, int width, int height)
+{
+	for (short i = x; i < x + width; i++)
+	{
+		for (short j = y; j < y + height; j++)
+		{
+			SetConsoleCursorPosition(console, { i, j });
+			cout << ' ';
+		}
+	}
+}
+
+class Form
+{
+	public: string Title;
+
+	public: vector<string> Fields;
+
+	private: void (*_callback)(Form form, vector<string>);
+
+	private: vector<string> _answers;
+
+	private: int _currentField;
+
+	private: COORD _currentCoords;
+
+	private: HANDLE* _console;
+
+	public: Form(string title, vector<string> fields, void (callback)(Form form, vector<string>))
+	{
+		Title = title;
+		Fields = fields;
+		_callback = callback;
+		_answers = vector<string>();
+		_currentField = 0;
+		_currentCoords = { 0, 0 };
+		_console = nullptr;
+	}
+
+	public: void Show(HANDLE console, short x, short y, short width, short height)
+	{
+		_console = &console;
+		short titleOffset = Title == "" ? 2 : 3;
+
+		ClearBox(console, x, y, width, Fields.size() * 2 + titleOffset);
+		DrawBox(console, x, y, width, height, Title); 
+
+		_currentCoords.X = x + 2;
+		_currentCoords.Y = y + titleOffset;
+		SetConsoleCursorPosition(console, _currentCoords);
+
+		while (_answers.size() != Fields.size())
+		{
+			WriteLine(Fields[_currentField]);
+			string input = ReadLine();
+			_answers.push_back(input);
+			_currentField++;
+		}
+
+		_callback(*this, _answers);
+		Dispose();
+	}
+
+	public: void WriteLine(string text)
+	{
+		if (_console != nullptr)
+		{
+			cout << text;
+			_currentCoords.Y++;
+			SetConsoleCursorPosition(*_console, _currentCoords);
+		}
+	}
+
+	public: string ReadLine()
+	{
+		string input = "";
+		cin >> input;
+		if (_console != nullptr)
+		{
+			_currentCoords.Y++;
+			SetConsoleCursorPosition(*_console, _currentCoords);
+		}
+		return input;
+	}
+
+	public: void Dispose()
+	{
+		_answers.clear();
+		_currentField = 0;
+		_currentCoords = { 0, 0 };
+		_console = nullptr;
+	}
+};
+
+const char* fileName = "";
+HANDLE console = GetStdHandle(STD_OUTPUT_HANDLE);
+Form* loginForm;
+Form* registerForm;
+vector<User> users{};
+User* user = nullptr;
+Form* runningForm = nullptr;
+
+void HandleLoginForm(Form form, vector<string> answers)
+{
+	for (int i = 0; i < users.size(); i++)
+	{
+		if (users[i].Name == answers[0])
+		{
+			if (users[i].Verify(answers[1]))
+			{
+				user = &users[i];
+				form.WriteLine("Logged as " + users[i].Name + "!");
+				return;
+			}
+			form.WriteLine("Invalid password!");
+			return;
+		}
+	}
+	form.WriteLine("User not found!");
+}
+
+void HandleRegisterForm(Form form, vector<string> answers)
+{
+	HashType hashType{};
+	if (answers[2] == "SHA256")
+		hashType = HashType::Sha256;
+	else if (answers[2] == "SHA224")
+		hashType = HashType::Sha224;
+	else
+	{
+		form.WriteLine("Invalid hash type!");
+		form.WriteLine("Proper: SHA256/SHA224");
+		return;
+	}
+
+	user = new User(answers[0], HashUtils::Hash(answers[1], HashUtils::GetHasherByType(hashType)), hashType);
+	users.push_back(*user);
+	WriteUserToDataBase(*user);
+	form.WriteLine("Registered account:");
+	form.WriteLine(user->Name);
+}
+
+void HandleChooseForm(Form form, vector<string> answers)
+{
+	string option = answers[0];
+	if (option == "Login")
+		runningForm = loginForm;
+	else if (option == "Register")
+		runningForm = registerForm;
+	else
+		form.WriteLine("Invalid form!");
+}
+
+void WriteUserToDataBase(User user)
+{
+	string buffer;
+	ofstream out;
+	out.open(fileName, ios::app);
+	out << user.ToString() << endl;
+	out.close();
+}
 
 int main()
 {
-	User* user = nullptr;
-	vector<User> users{};
+	vector<string> loginFields = vector<string>();
+	loginFields.push_back("Enter username:");
+	loginFields.push_back("Enter password:");
+
+	vector<string> registerFields = vector<string>();
+	registerFields.push_back("Enter username:");
+	registerFields.push_back("Enter password:");
+	registerFields.push_back("Enter hash type:");
+
+	vector<string> chooseFields = vector<string>();
+	chooseFields.push_back("Choose option: Login/Register");
+
+
+	loginForm = new Form("Login", loginFields, HandleLoginForm);
+	registerForm = new Form("Register", registerFields, HandleRegisterForm);
+	Form chooseForm = Form("Option", chooseFields, HandleChooseForm);
+
 	string buffer;
 	ifstream out;
-	out.open("C:\\GItHub\\ProgramsCPlusPlus\\Hash\\x64\\Debug\\users.txt");
+
+	short x = 40;
+	short y = 7;
+	short width = 35;
+	short height = 15;
+
+	out.open(fileName);
 	while (getline(out, buffer))
 		users.push_back(User::Parse(buffer));
 	out.close();
 
-	for (int i = 0; i < users.size(); i++)
-		cout << users[i].ToString() << endl;
-	while (user == nullptr)
-	{
-		string inputName = "";
-		string inputPassword = "";
-		cout << "Enter username:" << endl;
-		cin >> inputName;
-		cout << "Enter password:" << endl;
-		cin >> inputPassword;
+	while (runningForm == nullptr)
+		chooseForm.Show(console, x, y, width, height);
 
-		for (int i = 0; i < users.size(); i++)
-		{
-			if (users[i].Name == inputName)
-			{
-				if (users[i].Verify(inputPassword))
-				{
-					user = &users[i];
-					cout << "You successfully entered as " << users[i].Name << "!" << endl;
-					break;
-				}
-				cout << "Invalid password!" << endl;
-				continue;
-			}
-		}
-		cout << "User not found!" << endl;
-	}
+	while (user == nullptr)
+		runningForm->Show(console, x, y, width, height);
 	return 0;
 }
