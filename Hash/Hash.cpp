@@ -391,8 +391,10 @@ class User
 	}
 };
 
+
 int main()
 {
+	User* user = nullptr;
 	vector<User> users{};
 	string buffer;
 	ifstream out;
@@ -403,27 +405,30 @@ int main()
 
 	for (int i = 0; i < users.size(); i++)
 		cout << users[i].ToString() << endl;
-
-	string inputName = "";
-	string inputPassword = "";
-	cout << "Enter username:" << endl;
-	cin >> inputName;
-	cout << "Enter password:" << endl;
-	cin >> inputPassword;
-
-	for (int i = 0; i < users.size(); i++)
+	while (user == nullptr)
 	{
-		if (users[i].Name == inputName)
+		string inputName = "";
+		string inputPassword = "";
+		cout << "Enter username:" << endl;
+		cin >> inputName;
+		cout << "Enter password:" << endl;
+		cin >> inputPassword;
+
+		for (int i = 0; i < users.size(); i++)
 		{
-			if (users[i].Verify(inputPassword))
+			if (users[i].Name == inputName)
 			{
-				cout << "You successfully entered as " << users[i].Name << "!" << endl;
-				return 0;
+				if (users[i].Verify(inputPassword))
+				{
+					user = &users[i];
+					cout << "You successfully entered as " << users[i].Name << "!" << endl;
+					break;
+				}
+				cout << "Invalid password!" << endl;
+				continue;
 			}
-			cout << "Invalid password!" << endl;
-			return 1;
 		}
+		cout << "User not found!" << endl;
 	}
-	cout << "User not found!" << endl;
-	return 2;
+	return 0;
 }
