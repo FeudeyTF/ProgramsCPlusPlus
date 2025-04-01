@@ -51,7 +51,6 @@ class Utils
 			result = "0" + result;
 		return result;
 	}
-
 };
 
 const int _maxIterationsCount = 80;
@@ -184,13 +183,13 @@ class SHA2
 		return _hashValues;
 	}
 
-		  // Логический сдвиг вправо
+	// Логический сдвиг вправо
 	protected: uint ShiftRight(uint value, int bits)
 	{
 		return value >> bits;
 	}
 
-			 // Циклический сдвиг вправо
+	// Циклический сдвиг вправо
 	protected: uint RotateRight(uint value, int bits)
 	{
 		return (value >> bits) | (value << (32 - bits));
@@ -206,22 +205,22 @@ class SHA2
 		return (x & (y | z)) | (y & z);
 	}
 
-	protected: virtual uint BigSigma0(uint x)
+	protected: uint BigSigma0(uint x)
 	{
 		return RotateRight(x, 2) ^ RotateRight(x, 13) ^ RotateRight(x, 22);
 	}
 
-	protected: virtual uint BigSigma1(uint x)
+	protected: uint BigSigma1(uint x)
 	{
 		return RotateRight(x, 6) ^ RotateRight(x, 11) ^ RotateRight(x, 25);
 	}
 
-	protected: virtual uint SmallSigma0(uint x)
+	protected: uint SmallSigma0(uint x)
 	{
 		return RotateRight(x, 7) ^ RotateRight(x, 18) ^ ShiftRight(x, 3);
 	}
 
-	protected: virtual uint SmallSigma1(uint x)
+	protected: uint SmallSigma1(uint x)
 	{
 		return RotateRight(x, 17) ^ RotateRight(x, 19) ^ ShiftRight(x, 10);
 	}
@@ -328,10 +327,10 @@ class HashUtils
 	{
 		switch (type)
 		{
-			case HashType::Sha224:
-				return &Sha224Hasher;
-			default:
-				return &Sha256Hasher;
+		case HashType::Sha224:
+			return &Sha224Hasher;
+		default:
+			return &Sha256Hasher;
 		}
 	}
 
@@ -426,7 +425,7 @@ class Form
 
 		short titleOffset = Title == "" ? 2 : 3;
 		ClearBox(x, y, width, _isRunning ? Fields.size() * 2 + titleOffset : height);
-		DrawBox(x, y, width, height, Title); 
+		DrawBox(x, y, width, height, Title);
 		if (Title != "")
 			DrawLine(x, y + 2, width, 0xCC, 0xB9, 0xCD);
 		_currentCoords.X = x + 2;
@@ -690,9 +689,9 @@ int main()
 	while (getline(out, buffer))
 		users.push_back(User::Parse(buffer));
 	out.close();
-	
+
 	menuForm.Show(console, x, y, width, height);
-	if(runningForm)
+	if (runningForm)
 		runningForm->Show(console, x, y, width, height);
 
 	return 0;
