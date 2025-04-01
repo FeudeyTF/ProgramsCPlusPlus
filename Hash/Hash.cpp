@@ -386,62 +386,15 @@ class User
 	}
 };
 
-void DrawTextField(HANDLE console, short x, short y, string text)
-{
-	SetConsoleCursorPosition(console, { x, y });
-	cout << text;
-}
-
-void DrawBox(HANDLE console, short x, short y, short width, short height, string title = "")
-{
-	if (title != "")
-		DrawTextField(console, x + width / 2 - title.size() / 2, y + 1, title);
-	for (short i = x; i < x + width; i++)
-	{
-		for (short j = y; j < y + height; j++)
-		{
-			char c = 0;
-			if (i == x && j == y)
-				c = 0xC9;
-			else if (i == x && j == y + height - 1)
-				c = 0xC8;
-			else if (i == x + width - 1 && j == y)
-				c = 0xBB;
-			else if (i == x + width - 1 && j == y + height - 1)
-				c = 0xBC;
-			else if (i == x || i == x + width - 1)
-				c = 0xBA;
-			else if (j == y || j == y + height - 1)
-				c = 0xCD;
-
-			if (c != 0)
-			{
-				SetConsoleCursorPosition(console, { i, j });
-				cout << c;
-			}
-		}
-	}
-}
-
-void ClearBox(HANDLE console, int x, int y, int width, int height)
-{
-	for (short i = x; i < x + width; i++)
-	{
-		for (short j = y; j < y + height; j++)
-		{
-			SetConsoleCursorPosition(console, { i, j });
-			cout << ' ';
-		}
-	}
-}
-
 class Form
 {
 	public: string Title;
 
 	public: vector<string> Fields;
 
-	private: void (*_callback)(Form form, vector<string>);
+	public: WORD Colors;
+
+	private: bool (*_callback)(Form form, vector<string>*);
 
 	private: vector<string> _answers;
 
@@ -451,55 +404,83 @@ class Form
 
 	private: HANDLE* _console;
 
-	public: Form(string title, vector<string> fields, void (callback)(Form form, vector<string>))
+	private: bool _isRunning;
+
+	public: Form(string title, vector<string> fields, bool (callback)(Form form, vector<string>*), WORD colors)
 	{
 		Title = title;
 		Fields = fields;
+		Colors = colors;
 		_callback = callback;
 		_answers = vector<string>();
 		_currentField = 0;
 		_currentCoords = { 0, 0 };
 		_console = nullptr;
+		_isRunning = false;
 	}
 
 	public: void Show(HANDLE console, short x, short y, short width, short height)
 	{
 		_console = &console;
+		SetConsoleTextAttribute(console, Colors);
+
 		short titleOffset = Title == "" ? 2 : 3;
-
-		ClearBox(console, x, y, width, Fields.size() * 2 + titleOffset);
-		DrawBox(console, x, y, width, height, Title); 
-
+		ClearBox(x, y, width, _isRunning ? Fields.size() * 2 + titleOffset : height);
+		DrawBox(x, y, width, height, Title); 
+		if (Title != "")
+			DrawLine(x, y + 2, width, 0xCC, 0xB9, 0xCD);
 		_currentCoords.X = x + 2;
 		_currentCoords.Y = y + titleOffset;
 		SetConsoleCursorPosition(console, _currentCoords);
 
-		while (_answers.size() != Fields.size())
+		_isRunning = true;
+		while (_isRunning)
 		{
+			if (_answers.size() == Fields.size())
+			{
+				_isRunning = !_callback(*this, &_answers);
+				Dispose();
+				if (_isRunning)
+					Show(console, x, y, width, height);
+				break;
+			}
+
 			WriteLine(Fields[_currentField]);
 			string input = ReadLine();
 			_answers.push_back(input);
 			_currentField++;
 		}
-
-		_callback(*this, _answers);
-		Dispose();
 	}
 
-	public: void WriteLine(string text)
+	public: void WriteError(string error)
+	{
+		WriteLine(error, BACKGROUND_RED | FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED);
+	}
+
+	public: void WriteSuccess(string error)
+	{
+		WriteLine(error, BACKGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED);
+	}
+
+	public: void WriteLine(string text, WORD colors = 0)
 	{
 		if (_console != nullptr)
 		{
+			HANDLE console = *_console;
+			if (colors != 0)
+				SetConsoleTextAttribute(console, colors);
 			cout << text;
+			if (colors != 0)
+				SetConsoleTextAttribute(console, Colors);
 			_currentCoords.Y++;
-			SetConsoleCursorPosition(*_console, _currentCoords);
+			SetConsoleCursorPosition(console, _currentCoords);
 		}
 	}
 
 	public: string ReadLine()
 	{
 		string input = "";
-		cin >> input;
+		getline(cin, input);
 		if (_console != nullptr)
 		{
 			_currentCoords.Y++;
@@ -515,9 +496,81 @@ class Form
 		_currentCoords = { 0, 0 };
 		_console = nullptr;
 	}
+
+	private: void DrawTextField(short x, short y, string text)
+	{
+		SetConsoleCursorPosition(*_console, { x, y });
+		cout << text;
+	}
+
+	private: void DrawBox(short x, short y, short width, short height, string title = "")
+	{
+		HANDLE console = *_console;
+		if (title != "")
+			DrawTextField(x + width / 2 - title.size() / 2, y + 1, title);
+		for (short i = x; i < x + width; i++)
+		{
+			for (short j = y; j < y + height; j++)
+			{
+				char c = 0;
+				if (i == x && j == y)
+					c = 0xC9;
+				else if (i == x && j == y + height - 1)
+					c = 0xC8;
+				else if (i == x + width - 1 && j == y)
+					c = 0xBB;
+				else if (i == x + width - 1 && j == y + height - 1)
+					c = 0xBC;
+				else if (i == x + width - 2 && j == y)
+					c = 'X';
+				else if (i == x + width - 3 && j == y)
+					c = '-';
+				else if (i == x || i == x + width - 1)
+					c = 0xBA;
+				else if (j == y || j == y + height - 1)
+					c = 0xCD;
+
+				if (c != 0)
+				{
+					SetConsoleCursorPosition(console, { i, j });
+					cout << c;
+				}
+			}
+		}
+	}
+
+	private: void ClearBox(int x, int y, int width, int height)
+	{
+		HANDLE console = *_console;
+		for (short i = x; i < x + width; i++)
+		{
+			for (short j = y; j < y + height; j++)
+			{
+				SetConsoleCursorPosition(console, { i, j });
+				cout << ' ';
+			}
+		}
+	}
+
+	private: void DrawLine(short x, short y, short width, char start, char end, char medium)
+	{
+		HANDLE console = *_console;
+		COORD coords = { x, y };
+		SetConsoleCursorPosition(console, coords);
+		cout << start;
+		for (short i = 0; i < width - 2; i++)
+		{
+			coords.X++;
+			SetConsoleCursorPosition(console, coords);
+			cout << medium;
+		}
+		coords.X++;
+		SetConsoleCursorPosition(console, coords);
+		cout << end;
+	}
 };
 
-const char* fileName = "";
+const char* fileName = "db.txt";
 HANDLE console = GetStdHandle(STD_OUTPUT_HANDLE);
 Form* loginForm;
 Form* registerForm;
@@ -534,55 +587,78 @@ void WriteUserToDataBase(User user)
 	out.close();
 }
 
-void HandleLoginForm(Form form, vector<string> answers)
+bool HandleLoginForm(Form form, vector<string>* answers)
 {
 	for (int i = 0; i < users.size(); i++)
 	{
-		if (users[i].Name == answers[0])
+		if (users[i].Name == (*answers)[0])
 		{
-			if (users[i].Verify(answers[1]))
+			if (users[i].Verify((*answers)[1]))
 			{
 				user = &users[i];
-				form.WriteLine("Logged as " + users[i].Name + "!");
-				return;
+				form.WriteSuccess("Logged as " + users[i].Name + "!");
+				return true;
 			}
-			form.WriteLine("Invalid password!");
-			return;
+			form.WriteError("Invalid password!");
+			return false;
 		}
 	}
-	form.WriteLine("User not found!");
+	form.WriteError("User not found!");
+	return false;
 }
 
-void HandleRegisterForm(Form form, vector<string> answers)
+bool HandleRegisterForm(Form form, vector<string>* answers)
 {
+	string name = (*answers)[0];
+	string password = (*answers)[0];
+
 	HashType hashType{};
-	if (answers[2] == "SHA256")
+	string strHashType = (*answers)[2];
+
+	if (strHashType == "SHA256")
 		hashType = HashType::Sha256;
-	else if (answers[2] == "SHA224")
+	else if (strHashType == "SHA224")
 		hashType = HashType::Sha224;
 	else
 	{
-		form.WriteLine("Invalid hash type!");
-		form.WriteLine("Proper: SHA256/SHA224");
-		return;
+		form.WriteError("Invalid hash type!");
+		form.WriteError("Proper: SHA256/SHA224");
+		return false;
 	}
 
-	user = new User(answers[0], HashUtils::Hash(answers[1], HashUtils::GetHasherByType(hashType)), hashType);
+	for (int i = 0; i < users.size(); i++)
+	{
+		if (users[i].Name == name)
+		{
+			form.WriteError("This user is already exist!");
+			return false;
+		}
+	}
+
+	user = new User(name, HashUtils::Hash(password, HashUtils::GetHasherByType(hashType)), hashType);
 	users.push_back(*user);
 	WriteUserToDataBase(*user);
-	form.WriteLine("Registered account:");
-	form.WriteLine(user->Name);
+	form.WriteSuccess("Registered account:");
+	form.WriteSuccess(user->Name);
+	return true;
 }
 
-void HandleChooseForm(Form form, vector<string> answers)
+bool HandleChooseForm(Form form, vector<string>* answers)
 {
-	string option = answers[0];
+	string option = (*answers)[0];
 	if (option == "Login")
+	{
 		runningForm = loginForm;
+		return true;
+	}
 	else if (option == "Register")
+	{
 		runningForm = registerForm;
+		return true;
+	}
 	else
-		form.WriteLine("Invalid form!");
+		form.WriteError("Invalid form!");
+	return false;
 }
 
 int main()
@@ -596,31 +672,28 @@ int main()
 	registerFields.push_back("Enter password:");
 	registerFields.push_back("Enter hash type:");
 
-	vector<string> chooseFields = vector<string>();
-	chooseFields.push_back("Choose option: Login/Register");
+	vector<string> menuFields = vector<string>();
+	menuFields.push_back("Choose option: Login/Register");
 
-
-	loginForm = new Form("Login", loginFields, HandleLoginForm);
-	registerForm = new Form("Register", registerFields, HandleRegisterForm);
-	Form chooseForm = Form("Option", chooseFields, HandleChooseForm);
-
-	string buffer;
-	ifstream out;
+	loginForm = new Form("Login", loginFields, HandleLoginForm, BACKGROUND_BLUE | BACKGROUND_GREEN);
+	registerForm = new Form("Register", registerFields, HandleRegisterForm, BACKGROUND_GREEN | BACKGROUND_RED);
+	Form menuForm = Form("Menu", menuFields, HandleChooseForm, BACKGROUND_RED | BACKGROUND_BLUE);
 
 	short x = 40;
 	short y = 7;
 	short width = 35;
 	short height = 15;
 
+	string buffer;
+	ifstream out;
 	out.open(fileName);
 	while (getline(out, buffer))
 		users.push_back(User::Parse(buffer));
 	out.close();
-
-	while (runningForm == nullptr)
-		chooseForm.Show(console, x, y, width, height);
-
-	while (user == nullptr)
+	
+	menuForm.Show(console, x, y, width, height);
+	if(runningForm)
 		runningForm->Show(console, x, y, width, height);
+
 	return 0;
 }
