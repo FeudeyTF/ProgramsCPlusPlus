@@ -307,6 +307,11 @@ SHA256 Sha256Hasher = SHA256();
 
 class HashUtils
 {
+	public: static string Hash(string text, HashType type)
+	{
+		return Hash(text, GetHasherByType(type));
+	}
+
 	public: static string Hash(string text, SHA2* hasher)
 	{
 		string result = "";
@@ -337,51 +342,6 @@ class HashUtils
 	public: static HashType ParseHashType(string str)
 	{
 		return (HashType)atoi(str.c_str());
-	}
-};
-
-class User
-{
-	public: string Name;
-
-	public: HashType Type;
-
-	private: string _hashedPassword;
-
-	private: SHA2* _hasher;
-
-	public: User(string name, string hashedPassword, HashType hashType)
-	{
-		Name = name;
-		Type = hashType;
-		_hashedPassword = hashedPassword;
-		_hasher = HashUtils::GetHasherByType(hashType);
-	}
-
-	public: bool Verify(string password)
-	{
-		return HashUtils::Hash(password, _hasher) == _hashedPassword;
-	}
-
-	public: string ToString()
-	{
-		return Name + " " + _hashedPassword + " " + to_string(Type);
-	}
-
-	public: static User Parse(string str)
-	{
-		string name = "";
-		string hashedPassword = "";
-		HashType hashType = HashType::Sha256;
-		vector<string> splitedString{};
-		Utils::Split(str, ' ', splitedString);
-		if (splitedString.size() == 3)
-		{
-			name = splitedString[0];
-			hashedPassword = splitedString[1];
-			hashType = HashUtils::ParseHashType(splitedString[2]);
-		}
-		return User(name, hashedPassword, hashType);
 	}
 };
 
@@ -573,43 +533,52 @@ const char* fileName = "db.txt";
 HANDLE console = GetStdHandle(STD_OUTPUT_HANDLE);
 Form* loginForm;
 Form* registerForm;
-vector<User> users{};
-User* user = nullptr;
+vector<string> users{};
+string* user = nullptr;
 Form* runningForm = nullptr;
 
-void WriteUserToDataBase(User user)
+void WriteUserToDataBase(string user)
 {
 	string buffer;
 	ofstream out;
 	out.open(fileName, ios::app);
-	out << user.ToString() << endl;
+	out << user << endl;
 	out.close();
 }
 
 bool HandleLoginForm(Form form, vector<string>* answers)
 {
+	string inputString = (*answers)[0] + (*answers)[1];
+
+	string hash224 = HashUtils::Hash(inputString, HashType::Sha224);
+	string hash256 = HashUtils::Hash(inputString, HashType::Sha256);
+
+	bool founded = false;
 	for (int i = 0; i < users.size(); i++)
 	{
-		if (users[i].Name == (*answers)[0])
+		if(users[i] == hash224 || users[i] == hash256)
 		{
-			if (users[i].Verify((*answers)[1]))
+			if (user == nullptr)
 			{
 				user = &users[i];
-				form.WriteSuccess("Logged as " + users[i].Name + "!");
-				return true;
+				form.WriteSuccess("Logged as " + (*answers)[0] + "!");
 			}
-			form.WriteError("Invalid password!");
-			return false;
+			else
+			{
+				form.WriteError("Collision detected!");
+			}
 		}
 	}
-	form.WriteError("User not found!");
-	return false;
+	if (user == nullptr)
+		form.WriteError("Not authorized!");
+
+	return user != nullptr;
 }
 
 bool HandleRegisterForm(Form form, vector<string>* answers)
 {
 	string name = (*answers)[0];
-	string password = (*answers)[0];
+	string password = (*answers)[1];
 
 	HashType hashType{};
 	string strHashType = (*answers)[2];
@@ -624,21 +593,26 @@ bool HandleRegisterForm(Form form, vector<string>* answers)
 		form.WriteError("Proper: SHA256/SHA224");
 		return false;
 	}
+	string inputString = name + password;
+	string hash = HashUtils::Hash(inputString, hashType);
+
+	string hash224 = HashUtils::Hash(inputString, HashType::Sha224);
+	string hash256 = HashUtils::Hash(inputString, HashType::Sha256);
 
 	for (int i = 0; i < users.size(); i++)
 	{
-		if (users[i].Name == name)
+		if (users[i] == hash224 || users[i] == hash256)
 		{
-			form.WriteError("This user is already exist!");
+			form.WriteError("This user is already exist! (Collision)");
 			return false;
 		}
 	}
 
-	user = new User(name, HashUtils::Hash(password, HashUtils::GetHasherByType(hashType)), hashType);
+	user = &hash;
 	users.push_back(*user);
 	WriteUserToDataBase(*user);
 	form.WriteSuccess("Registered account:");
-	form.WriteSuccess(user->Name);
+	form.WriteSuccess(name);
 	return true;
 }
 
@@ -687,7 +661,7 @@ int main()
 	ifstream out;
 	out.open(fileName);
 	while (getline(out, buffer))
-		users.push_back(User::Parse(buffer));
+		users.push_back(buffer);
 	out.close();
 
 	menuForm.Show(console, x, y, width, height);
