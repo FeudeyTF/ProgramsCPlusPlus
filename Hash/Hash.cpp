@@ -323,6 +323,11 @@ class HashUtils
 		return result;
 	}
 
+	public: static string Hash(string text, HashType type)
+	{
+		return Hash(text, GetHasherByType(type));
+	}
+
 	public: static SHA2* GetHasherByType(HashType type)
 	{
 		switch (type)
@@ -634,7 +639,7 @@ bool HandleRegisterForm(Form form, vector<string>* answers)
 		}
 	}
 
-	user = new User(name, HashUtils::Hash(password, HashUtils::GetHasherByType(hashType)), hashType);
+	user = new User(name, HashUtils::Hash(password, hashType), hashType);
 	users.push_back(*user);
 	WriteUserToDataBase(*user);
 	form.WriteSuccess("Registered account:");
